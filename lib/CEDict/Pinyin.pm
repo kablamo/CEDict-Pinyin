@@ -8,7 +8,7 @@ use vars qw($VERSION);
 use base qw(Class::Light);
 use Carp;
 
-$VERSION = '0.01000';
+$VERSION = '0.01001';
 
 =encoding utf8
 
