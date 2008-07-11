@@ -1,0 +1,7 @@
+0.02000   2008-07-11
+          - Added "diacritic" for rendering Pinyin text with
+					diacritic marks instead of numbers to represent
+					tone marks.
+
+					- Fixed a bug in the "buildRegex" method that would
+					generate the wrong pattern in some cases

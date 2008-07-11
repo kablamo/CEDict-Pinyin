@@ -7,8 +7,9 @@ use warnings;
 use vars qw($VERSION);
 use base qw(Class::Light);
 use Carp;
+use Encode;
 
-$VERSION = '0.01001';
+$VERSION = '0.02000';
 
 =encoding utf8
 
@@ -71,6 +72,16 @@ my %ValidPinyin;
 $ValidPinyin{$_} = chomp $_ while <DATA>;
 close DATA;
 
+# Characters containing the diacritic marks used in pinyin. The array is ordered
+# by tone number (however since arrays are 0-indexed the first-tone diacritic
+# information is at $Tones[0]).
+my @Tones = (
+{a=>"\x{0101}",e=>"\x{0113}",i=>"\x{012B}",o=>"\x{014D}",u=>"\x{016B}",v=>"\x{01D6}"},
+{a=>"\x{00E1}",e=>"\x{00E9}",i=>"\x{00ED}",o=>"\x{00F3}",u=>"\x{00FA}",v=>"\x{01D8}"},
+{a=>"\x{01CE}",e=>"\x{0115}",i=>"\x{01D0}",o=>"\x{01D2}",u=>"\x{01D4}",v=>"\x{01DA}"},
+{a=>"\x{00E0}",e=>"\x{00E8}",i=>"\x{00EC}",o=>"\x{00F2}",u=>"\x{00F9}",v=>"\x{01DC}"}
+);
+
 sub getValidPinyin {
 	return \%ValidPinyin;
 }
@@ -90,13 +101,61 @@ using the C<setSource> method.
 sub _init {
 	my $self   = shift;
 	my $source = shift || '';
-	$self->{'source'} = $source;
+	$self->{source} = $source;
 }
 
 =item C<< $obj->setSource( >>I<SCALAR>C<)>
 
 Sets the source string to work with. Currently only the C<isPinyin> method accesses
 this attribute.
+
+=item C<< $obj->diacritic >>
+
+Returns the string of pinyin using diacritic marks instead of numbers to represent
+tone information. For example, if the source pinyin is "nan2 nv lao3 shao4" then
+C<< $obj->diacritic >> will return "nán nǚ lǎo shào".
+
+=cut
+
+# See http://www.pinyin.info/rules/where.html for a description of the
+# rules regarding where tone marks go. These rules are copied here:
+#
+# * a and e trump all other vowels and always take the tone mark.
+#   There are no Mandarin syllables in Hanyu Pinyin that contain
+#   both a and e.
+# * In the combination ou, o takes the mark.
+# * In all other cases, the final vowel takes the mark.
+#
+sub diacritic {
+	my $self   = shift;
+	my $source = $self->{source};
+	my $parts  = [];
+	return unless $self->isPinyin($parts);
+	my @parts  = @$parts;
+	return unless @parts;
+	my @string;
+
+	for my $part (@parts) {
+		$part =~ s/(.*)([1-5])/$1/;
+		my $tone = ($2 ? $2 : 5) - 1;
+		if ($tone < 4) {
+			if ($part =~ /([ae])/) {
+				my $vowel = $1;
+				$part =~ s/$vowel/$Tones[$tone]{$vowel}/;
+			} elsif ($part =~ /ou/) {
+				$part =~ s/o/$Tones[$tone]{o}/;
+			} elsif ($part =~ /v/) {
+				$part =~ s/v/$Tones[$tone]{v}/;
+			} elsif (reverse $part =~ /([aeiou])/) {
+				my $vowel = $1;
+				$part =~ s/$vowel/$Tones[$tone]{$vowel}/;
+			}
+		}
+		push @string, $part;
+	}
+
+	return encode('UTF-8', join (' ', @string));
+}
 
 =item C<< $obj->isPinyin >> I<or> C<< $obj>->isPinyin( >>I<ARRAYREF>C<)>
 
@@ -110,7 +169,7 @@ immediately returns false. Returns true otherwise.
 sub isPinyin {
 	my $self   = shift;
 	my $parts  = shift || [];
-	my $source = $self->{'source'};
+	my $source = $self->{source};
 	return unless $source;
 	$source = lc $source;
 	return 0 unless $source =~ /^[a-z]+[a-z1-5,'\- ]*$/;
@@ -144,7 +203,7 @@ sub isPinyin {
 	return 1;
 }
 
-=item C<< CEDict::Pinyin->buildRegex( >>I<STRING>C<)>
+=item C<< CEDict::Pinyin->buildRegex( >>I<SCALAR>C<)>
 
 Takes a string containing pinyin and returns a regular expression that can be used with
 the MySQL database (so far only tested against the 5.1 series). Accepts an asterisk ("*")
@@ -161,17 +220,18 @@ sub buildRegex {
 	my $source  = shift or return;
 	$source =~ s/\*+/\*/g; # Collapse redundant wildcards into one
 	my @reParts = ($source =~ /(\*|[^*]+)/g);
-	my $regex   = "^";
+	my $regex   = '^';
 
 	for (my $h = 0; $h < @reParts; $h++) {
 		$_ = $reParts[$h];
-		if ($_ eq "*") {
-			$regex .= ".*";
+		if ($_ eq '*') {
+			$regex .= '.*';
 			next;
 		}
 		my $pinyin = __PACKAGE__->new($_);
 		my $parts  = []; $pinyin->isPinyin($parts);
 		my @parts  = @$parts;
+		return unless @parts;
 
 		# Check if last part is a valid pinyin substring
 		return unless _isValidInitialSubstring($parts[$#parts]);
@@ -179,8 +239,13 @@ sub buildRegex {
 		# Use parts to construct a MySQL regular expression
 		for (my $i = 0; $i < @parts; $i++) {
 			$regex .= $parts[$i];
-			$regex .= "[1-5]?" unless $parts[$i] =~ /[1-5]/;
-			$regex .= ($h == $#reParts && $i == $#parts)? '$' : "[,' -]";
+			$regex .= '[1-5]?' unless $parts[$i] =~ /[1-5]/;
+			unless (
+				($h == $#reParts
+					|| ($h == ($#reParts - 1) && $reParts[$#reParts] eq '*'))
+				&& $i == $#parts) {
+				$regex .=  "[,' -]";
+			}
 		}
 	}
 
@@ -193,6 +258,7 @@ sub buildRegex {
 # Checks if $startsWith is the beginning of a valid pinyin string
 sub _isValidInitialSubstring {
 	my $startsWith = shift;
+	$startsWith =~ s/[1-5]//;
 	for (keys %ValidPinyin) {
 		return 1 if /^$startsWith/;
 	}
@@ -237,7 +303,7 @@ Christopher Davaz         www.chrisdavaz.com          cdavaz@gmail.com
 
 =head1 VERSION
 
-Version 0.1 (Jun 11 2008)
+Version 0.01001 (Jun 11 2008)
 
 =head1 COPYRIGHT
 

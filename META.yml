@@ -1,6 +1,6 @@
 ---
 name: CEDict-Pinyin
-version: 0.01001
+version: 0.02000
 author:
   - Christopher Davaz         www.chrisdavaz.com          cdavaz@gmail.com
 abstract: Validates pinyin strings
@@ -14,7 +14,7 @@ build_requires:
 provides:
   CEDict::Pinyin:
     file: lib/CEDict/Pinyin.pm
-    version: 0.01001
+    version: 0.02000
 generated_by: Module::Build version 0.280801
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.2.html
