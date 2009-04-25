@@ -9,7 +9,7 @@ WriteMakefile
           'VERSION_FROM' => 'lib/CEDict/Pinyin.pm',
           'PREREQ_PM' => {
                            'Test::More' => 0,
-                           'Class::Light' => '0.01000'
+                           'Class::Light' => '0.01002'
                          }
         )
 ;
