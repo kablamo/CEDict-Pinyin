@@ -156,7 +156,7 @@ sub diacritic {
 				$part =~ s/o/$Tones[$tone]{o}/;
 			} elsif ($part =~ /v/) {
 				$part =~ s/v/$Tones[$tone]{v}/;
-			} elsif (reverse $part =~ /([aeiou])/) {
+			} elsif (reverse($part) =~ /([aeiou])/) {
 				my $vowel = $1;
 				$part =~ s/$vowel/$Tones[$tone]{$vowel}/;
 			}
